@@ -48,7 +48,8 @@ Make sure you have a running [CARLA simulator](https://carla.org/) server compat
 Run a simple example with a pre-trained [Diffusion Q-Learning](https://github.com/Zhendong-Wang/Diffusion-Policies-for-Offline-RL) agent:
 
 ```bash
-python example/run_dql_in_carla.py
+cd example
+python run_dql_in_carla.py
 ```
 
 Make sure to download or prepare a trained model checkpoint under the `example/params_dql/` directory.
