@@ -42,6 +42,7 @@ pip install -e .
 ```
 
 Make sure you have a running [CARLA simulator](https://carla.org/) server compatible with your environment.
+
 For detailed installation instructions, please refer to the [official CARLA docs](https://carla.readthedocs.io/en/0.9.13/start_quickstart/)
 
 ## Quick Start
