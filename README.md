@@ -60,7 +60,7 @@ This script demonstrates how to:
 
 Make sure your CARLA server is running before executing the demo.
 
-## Full Example: Evaluation with Diffusion Q-Learning
+## Advanced Example: Evaluation with Diffusion Q-Learning
 
 For a more advanced usage, you can run a pre-trained [Diffusion Q-Learning](https://github.com/Zhendong-Wang/Diffusion-Policies-for-Offline-RL) agent in the EasyCarla-RL environment:
 
