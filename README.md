@@ -84,8 +84,9 @@ EasyCarla-RL/
 │   │   └── carla_env.py
 │   └── __init__.py
 ├── example/
-│   ├── agent_dql/
+│   ├── agents/
 │   ├── params_dql/
+│   ├── utils/
 │   └── run_dql_in_carla.py
 ├── easycarla_demo.py
 ├── requirements.txt
