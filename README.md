@@ -85,11 +85,11 @@ EasyCarla-RL/
 │   │   ├── __init__.py           
 │   │   └── carla_env.py          # Carla environment wrapper following the Gym API
 │   └── __init__.py               
-├── example/                      
-│   ├── agents/                   # Reinforcement learning agent implementations (e.g., Diffusion Q-Learning agent)
-│   ├── params_dql/               # Pretrained model checkpoints (Diffusion Q-Learning parameters)
+├── example/                      # Advanced example
+│   ├── agents/                   
+│   ├── params_dql/               
 │   ├── utils/                    
-│   └── run_dql_in_carla.py       # Script to run a pretrained Diffusion Q-Learning agent in EasyCarla-RL
+│   └── run_dql_in_carla.py       # Script to run a pretrained RL model
 ├── easycarla_demo.py             # Quick Start demo script (basic Gym-style environment interaction)
 ├── requirements.txt              
 ├── setup.py                      
