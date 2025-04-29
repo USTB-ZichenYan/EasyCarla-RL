@@ -74,7 +74,7 @@ Make sure you have downloaded or prepared a trained model checkpoint under the `
 This example demonstrates:
 - Loading a pre-trained RL agent
 - Interacting with EasyCarla-RL for evaluation
-- Evaluating agent performance in a realistic autonomous driving task
+- Evaluating the performance of a real RL model on a simulated autonomous driving task
 
 ## Project Structure
 
