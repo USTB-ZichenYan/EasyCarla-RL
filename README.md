@@ -80,17 +80,17 @@ This example demonstrates:
 
 ```
 EasyCarla-RL/                    
-├── easycarla/                    # Main environment module (Python package)
+├── easycarla/                 # Main environment module (Python package)
 │   ├── envs/                     
 │   │   ├── __init__.py           
-│   │   └── carla_env.py          # Carla environment wrapper following the Gym API
+│   │   └── carla_env.py       # Carla environment wrapper following the Gym API
 │   └── __init__.py               
-├── example/                      # Advanced example
+├── example/                   # Advanced example
 │   ├── agents/                   
 │   ├── params_dql/               
 │   ├── utils/                    
-│   └── run_dql_in_carla.py       # Script to run a pretrained RL model
-├── easycarla_demo.py             # Quick Start demo script (basic Gym-style environment interaction)
+│   └── run_dql_in_carla.py    # Script to run a pretrained RL model
+├── easycarla_demo.py          # Quick Start demo script (basic Gym-style environment interaction)
 ├── requirements.txt              
 ├── setup.py                      
 └── README.md                     
