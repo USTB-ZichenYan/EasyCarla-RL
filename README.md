@@ -85,7 +85,7 @@ This dataset includes over **7,000 trajectories** and **1.1 million timesteps**,
 You can download it from either of the following sources:
 
 *  [Download from Hugging Face (direct link)](https://huggingface.co/datasets/silverwingsbot/easycarla/resolve/main/easycarla_offline_dataset.hdf5)
-*  [Download from Baidu Netdisk (提取码: 2049)](https://pan.baidu.com/s/1yhCFzl4RFHzxfszebYnOIg?pwd=2049)
+*  [Download from 百度网盘 (提取码: 2049)](https://pan.baidu.com/s/1yhCFzl4RFHzxfszebYnOIg?pwd=2049)
 
 Filename: `easycarla_offline_dataset.hdf5` Size: \~2.76 GB Format: HDF5
 
