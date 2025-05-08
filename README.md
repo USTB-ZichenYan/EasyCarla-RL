@@ -76,6 +76,19 @@ This example demonstrates:
 - Interacting with EasyCarla-RL for evaluation
 - Evaluating the performance of a real RL model on a simulated autonomous driving task
 
+## 📥 Download Dataset
+
+We provide an offline dataset used for training and evaluating RL agents in the EasyCarla-RL environment.
+
+This dataset includes over **7,000 trajectories** and **1.1 million timesteps**, collected from a mix of expert and random policies (with an **8:2 ratio** of expert to random). The data is stored in **HDF5 format**.
+
+You can download it from either of the following sources:
+
+*  [Download from Hugging Face (direct link)](https://huggingface.co/datasets/silverwingsbot/easycarla/resolve/main/easycarla_offline_dataset.hdf5)
+*  [Download from Baidu Netdisk (提取码: 2049)](https://pan.baidu.com/s/1yhCFzl4RFHzxfszebYnOIg?pwd=2049)
+
+Filename: `easycarla_offline_dataset.hdf5` Size: \~2.76 GB Format: HDF5
+
 ## Project Structure
 
 ```
