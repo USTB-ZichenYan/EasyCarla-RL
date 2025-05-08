@@ -6,19 +6,7 @@ A lightweight and beginner-friendly OpenAI Gym environment built on the CARLA si
 
 ## Overview
 
-EasyCarla-RL offers a simple and efficient interface to use the CARLA simulator for reinforcement learning (RL) tasks.
-It provides essential observation components such as LiDAR scans, ego vehicle states, nearby vehicle information, and waypoints,
-allowing users to train and evaluate RL agents without complex engineering overhead. The environment is designed to be both accessible to beginners and powerful enough for advanced RL research.
-
-## Features
-
-- Lightweight and easy-to-integrate CARLA wrapper
-- Specifically designed for reinforcement learning applications
-- Rich observations: LiDAR, ego vehicle state, nearby vehicles, and waypoints
-- Built-in support for safety-aware RL with reward and cost signals
-- Configurable settings: traffic lights, number of vehicles, LiDAR range, and more
-- Visualization support for waypoints and vehicle surroundings
-- Fully compatible with the OpenAI Gym API
+EasyCarla-RL provides a lightweight and easy-to-use Gym-compatible interface for the CARLA simulator, specifically tailored for reinforcement learning (RL) applications. It integrates essential observation components such as LiDAR scans, ego vehicle states, nearby vehicle information, and waypoints. The environment supports safety-aware learning with reward and cost signals, visualization of waypoints, and customizable parameters including traffic settings, number of vehicles, and sensor range. EasyCarla-RL is designed to help both researchers and beginners efficiently train and evaluate RL agents without heavy engineering overhead.
 
 ## Installation
 
