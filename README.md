@@ -1,4 +1,4 @@
-🚀 **New Dataset Released!**(#-download-dataset)
+🚀 [**New Dataset Released!**](#-download-dataset)
 
 # EasyCarla-RL
 
