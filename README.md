@@ -1,3 +1,5 @@
+🚀 **New Dataset Released!**(#-download-dataset)
+
 # EasyCarla-RL
 
 EasyCarla-RL is based on the [gym-carla](https://github.com/cjy1992/gym-carla) project, with significant improvements for ease of use and reinforcement learning tasks.
