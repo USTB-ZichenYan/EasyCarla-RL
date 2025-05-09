@@ -79,6 +79,25 @@ You can download it from either of the following sources:
 
 Filename: `easycarla_offline_dataset.hdf5` Size: \~2.76 GB Format: HDF5
 
+### Observation Format
+
+Each observation in the dataset is stored as a **307-dimensional flat vector**, constructed by concatenating several components in the following order:
+
+```python
+# Flattening function used during data generation
+
+def flatten_obs(obs_dict):
+    return np.concatenate([
+        obs_dict['ego_state'],        # 9 dimensions
+        obs_dict['lane_info'],        # 2 dimensions
+        obs_dict['lidar'],            # 240 dimensions
+        obs_dict['nearby_vehicles'],  # 20 dimensions
+        obs_dict['waypoints']         # 36 dimensions
+    ]).astype(np.float32)  # Total: 307 dimensions
+```
+
+This format allows for efficient training of neural networks while preserving critical spatial and semantic information.
+
 ## Project Structure
 
 ```
