@@ -126,6 +126,6 @@ Created by [SilverWings](https://github.com/silverwingsbot)
 
 This project is made possible thanks to the following outstanding open-source contributions:
 
-- [CARLA](https://carla.org/)
+- [CARLA](https://github.com/carla-simulator/carla)
 - [gym-carla](https://github.com/cjy1992/gym-carla)
 - [Diffusion Q-Learning](https://github.com/Zhendong-Wang/Diffusion-Policies-for-Offline-RL)
