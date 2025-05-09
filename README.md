@@ -1,10 +1,6 @@
 🚀 [**New Dataset Released !**](#-download-dataset)
 
-# EasyCarla-RL
-
-EasyCarla-RL is based on the [gym-carla](https://github.com/cjy1992/gym-carla) project, with significant improvements for ease of use and reinforcement learning tasks.
-
-A lightweight and beginner-friendly OpenAI Gym environment built on the CARLA simulator.
+# EasyCarla-RL: A lightweight and beginner-friendly OpenAI Gym environment built on the CARLA simulator
 
 ## Overview
 
@@ -126,3 +122,10 @@ This project is licensed under the [Apache License 2.0](https://www.apache.org/l
 
 Created by [SilverWings](https://github.com/silverwingsbot)
 
+## 💓 Acknowledgement
+
+This project is made possible thanks to the following outstanding open-source contributions:
+
+- [CARLA](https://carla.org/)
+- [gym-carla](https://github.com/cjy1992/gym-carla)
+- [Diffusion Q-Learning](https://github.com/Zhendong-Wang/Diffusion-Policies-for-Offline-RL)
