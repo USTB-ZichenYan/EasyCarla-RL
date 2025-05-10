@@ -12,6 +12,8 @@ EasyCarla-RL provides a lightweight and easy-to-use Gym-compatible interface for
   <tr>
     <td><img src="assets/part1.gif" width="100%"/></td>
     <td><img src="assets/part2.gif" width="100%"/></td>
+  </tr>
+   <tr>
     <td><img src="assets/part3.gif" width="100%"/></td>
   </tr>
 </table>
