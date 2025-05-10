@@ -1,3 +1,20 @@
+<div align="center">
+
+<table>
+  <tr>
+    <td align="center"><b>🚗 Custom Traffic</b></td>
+    <td align="center"><b>🔄 View Mode Switch</b></td>
+    <td align="center"><b>🗺️ Multi-Town Maps</b></td>
+  </tr>
+  <tr>
+    <td><img src="assets/demo1.gif" width="100%"/></td>
+    <td><img src="assets/demo2.gif" width="100%"/></td>
+    <td><img src="assets/demo3.gif" width="100%"/></td>
+  </tr>
+</table>
+
+</div>
+
 🚀 [**New Dataset Released !**](#-download-dataset)
 
 # EasyCarla-RL: A lightweight and beginner-friendly OpenAI Gym environment built on the CARLA simulator
