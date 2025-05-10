@@ -7,9 +7,9 @@
     <td align="center"><b>🗺️ Multi-Town Maps</b></td>
   </tr>
   <tr>
-    <td><img src="assets/demo1.gif" width="100%"/></td>
-    <td><img src="assets/demo2.gif" width="100%"/></td>
-    <td><img src="assets/demo3.gif" width="100%"/></td>
+    <td><img src="assets/part1.gif" width="100%"/></td>
+    <td><img src="assets/part2.gif" width="100%"/></td>
+    <td><img src="assets/part3.gif" width="100%"/></td>
   </tr>
 </table>
 
