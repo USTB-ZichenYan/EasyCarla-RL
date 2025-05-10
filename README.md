@@ -10,11 +10,6 @@ EasyCarla-RL provides a lightweight and easy-to-use Gym-compatible interface for
 
 <table>
   <tr>
-    <td align="center"><b>🚗 Custom Traffic</b></td>
-    <td align="center"><b>🔄 View Mode Switch</b></td>
-    <td align="center"><b>🗺️ Multi-Town Maps</b></td>
-  </tr>
-  <tr>
     <td><img src="assets/part1.gif" width="100%"/></td>
     <td><img src="assets/part2.gif" width="100%"/></td>
     <td><img src="assets/part3.gif" width="100%"/></td>
