@@ -76,7 +76,7 @@ This example demonstrates:
 
 ## 📥 Download Dataset
 
-We provide an offline dataset used for training and evaluating RL agents in the EasyCarla-RL environment.
+This repository provides an offline dataset for training and evaluating RL agents in the EasyCarla-RL environment.
 
 This dataset includes over **7,000 trajectories** and **1.1 million timesteps**, collected from a mix of expert and random policies (with an **8:2 ratio** of expert to random). The data is stored in **HDF5 format**.
 
