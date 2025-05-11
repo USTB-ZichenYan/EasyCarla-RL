@@ -96,6 +96,7 @@ Each sample in the dataset includes the following fields:
 ├── observations          → shape: [N, 307]        # concatenated: ego_state + lane_info + lidar + nearby_vehicles + waypoints
 ├── actions               → shape: [N, 3]          # [throttle, steer, brake]
 ├── rewards               → shape: [N]             # scalar reward per step
+├── costs                 → shape: [N]             # safety-related cost signal per step
 ├── done                  → shape: [N]             # 1 if episode ends
 ├── next_observations     → shape: [N, 307]        # next-step observations, same format as observations
 ├── info                  → dict containing:
