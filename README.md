@@ -127,6 +127,66 @@ def flatten_obs(obs_dict):
 
 This format allows for efficient training of neural networks while preserving critical spatial and semantic information.
 
+### How to Load and Train with HDF5 Dataset？
+
+This example shows how to load the offline dataset and use it in a typical RL training loop. The model here is a placeholder — you can plug in any behavior cloning, Q-learning, or actor-critic model.
+
+```python
+import h5py
+import torch
+import numpy as np
+
+# === Load dataset from HDF5 ===
+with h5py.File('easycarla_offline_dataset.hdf5', 'r') as f:
+    observations = torch.tensor(f['observations'][:], dtype=torch.float32)
+    actions = torch.tensor(f['actions'][:], dtype=torch.float32)
+    rewards = torch.tensor(f['rewards'][:], dtype=torch.float32)
+    next_observations = torch.tensor(f['next_observations'][:], dtype=torch.float32)
+    dones = torch.tensor(f['done'][:], dtype=torch.float32)
+
+# === (Optional) check shape info ===
+print("observations:", observations.shape)
+print("actions:", actions.shape)
+
+# === Placeholder model example ===
+class YourModel(torch.nn.Module):
+    def __init__(self, obs_dim, act_dim):
+        super().__init__()
+        # define your model here
+        pass
+
+    def forward(self, obs):
+        # define forward pass
+        return None
+
+# === Training setup ===
+model = YourModel(obs_dim=observations.shape[1], act_dim=actions.shape[1])
+optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+loss_fn = torch.nn.MSELoss()
+
+# === Offline RL training loop ===
+for epoch in range(1, 11):  # e.g. 10 epochs
+    for step in range(100):  # e.g. 100 steps per epoch
+        # sample random batch
+        idx = np.random.randint(0, len(observations), size=256)
+        obs_batch = observations[idx]
+        act_batch = actions[idx]
+        rew_batch = rewards[idx]
+        next_obs_batch = next_observations[idx]
+        done_batch = dones[idx]
+
+        # forward, compute loss
+        pred = model(obs_batch)  # e.g. predict action or Q-value
+        loss = loss_fn(pred, act_batch)  # just an example
+
+        # backward and update
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    print(f"[Epoch {epoch}] Loss: {loss.item():.4f}  # Replace with your own logging or evaluation")
+```
+
 ## Project Structure
 
 ```
