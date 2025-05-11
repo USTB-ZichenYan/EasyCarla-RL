@@ -87,6 +87,27 @@ You can download it from either of the following sources:
 
 Filename: `easycarla_offline_dataset.hdf5` Size: \~2.76 GB Format: HDF5
 
+### Dataset Structure (HDF5)
+
+Each sample in the dataset includes the following fields:
+
+```
+/                         (root)
+├── observations          → shape: [N, 307]        # concatenated: ego_state + lane_info + lidar + nearby_vehicles + waypoints
+├── actions               → shape: [N, 3]          # [throttle, steer, brake]
+├── rewards               → shape: [N]             # scalar reward per step
+├── done                  → shape: [N]             # 1 if episode ends
+├── next_observations     → shape: [N, 307]        # next-step observations, same format as observations
+├── info                  → dict containing:
+│   ├── is_collision      → shape: [N]             # 1 if collision occurs
+│   └── is_off_road       → shape: [N]             # 1 if vehicle leaves the road
+```
+
+* `N` is the number of total timesteps across all episodes (\~1.1 million).
+* `observations` and `next_observations` are 307-dimensional vectors formed by concatenating:
+
+  * `ego_state` (9) + `lane_info` (2) + `lidar` (240) + `nearby_vehicles` (20) + `waypoints` (36)
+
 ### Observation Format
 
 Each observation in the dataset is stored as a **307-dimensional flat vector**, constructed by concatenating several components in the following order:
