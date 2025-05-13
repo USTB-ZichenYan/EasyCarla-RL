@@ -78,7 +78,7 @@ This example demonstrates:
 
 This repository provides an offline dataset for training and evaluating RL agents in the EasyCarla-RL environment.
 
-This dataset includes over **7,000 trajectories** and **1.1 million timesteps**, collected from a mix of expert and random policies (with an **8:2 ratio** of expert to random). The data is stored in **HDF5 format**.
+This dataset includes over **7,000 trajectories** and **1.1 million timesteps**, collected from a mix of expert and random policies (with an **8:2 ratio** of expert to random), recorded in the Town03 map. The data is stored in **HDF5 format**.
 
 You can download it from either of the following sources:
 
