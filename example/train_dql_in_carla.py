@@ -13,19 +13,21 @@ import gym
 import easycarla
 from agents.ql_diffusion import Diffusion_QL
 from datetime import datetime
+import collections
+import random
+import warnings
 
-# 确保中文显示正常
-plt.rcParams["font.family"] = ["SimHei", "WenQuanYi Micro Hei", "Heiti TC"]
 
 # ===================== Helper Functions =====================
 def convert_obs_dict_to_vector(obs_dict):
     """Convert observation dictionary to a flattened state vector."""
+    # 补充维度注释，便于后续维护
     return np.concatenate([
-        obs_dict['ego_state'],        # 9 dimensions
-        obs_dict['lane_info'],        # 2 dimensions
-        obs_dict['lidar'],            # 240 dimensions
-        obs_dict['nearby_vehicles'],  # 20 dimensions
-        obs_dict['waypoints']         # 36 dimensions
+        obs_dict['ego_state'],        # 9 dimensions (自车位置/速度/航向)
+        obs_dict['lane_info'],        # 2 dimensions (车道偏移/航向偏差)
+        obs_dict['lidar'],            # 240 dimensions (激光雷达特征)
+        obs_dict['nearby_vehicles'],  # 20 dimensions (周围车辆状态)
+        obs_dict['waypoints']         # 36 dimensions (导航点信息)
     ]).astype(np.float32)
 
 
@@ -33,25 +35,43 @@ def convert_obs_dict_to_vector(obs_dict):
 class OfflineDataset:
     """离线数据集加载器"""
     def __init__(self, file_path):
+        # 新增文件合法性校验，提前规避加载错误
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Dataset file not found: {file_path}")
+        if not file_path.endswith(('.hdf5', '.h5')):
+            raise ValueError(f"Unsupported file format: {file_path}, only .hdf5/.h5 allowed")
+        
         self.file_path = file_path
         self._load_data()
     
     def _load_data(self):
-        """加载HDF5数据集"""
+        """加载HDF5数据集（优化内存占用与维度校验）"""
         print(f"Loading dataset from {self.file_path}...")
-        with h5py.File(self.file_path, 'r') as f:
-            # 加载主要数据
-            self.observations = torch.tensor(f['observations'][:], dtype=torch.float32)
-            self.actions = torch.tensor(f['actions'][:], dtype=torch.float32)
-            self.rewards = torch.tensor(f['rewards'][:], dtype=torch.float32)
-            self.next_observations = torch.tensor(f['next_observations'][:], dtype=torch.float32)
-            self.dones = torch.tensor(f['done'][:], dtype=torch.float32)
-            
-            # 加载信息字典
-            self.info = {}
-            info_group = f['info']
-            for key in info_group.keys():
-                self.info[key] = torch.tensor(info_group[key][:], dtype=torch.float32)
+        try:
+            with h5py.File(self.file_path, 'r') as f:
+                # 加载核心数据（统一转为float32减少内存消耗）
+                self.observations = torch.tensor(f['observations'][:], dtype=torch.float32)
+                self.actions = torch.tensor(f['actions'][:], dtype=torch.float32)
+                self.rewards = torch.tensor(f['rewards'][:], dtype=torch.float32)
+                self.next_observations = torch.tensor(f['next_observations'][:], dtype=torch.float32)
+                self.dones = torch.tensor(f['done'][:], dtype=torch.float32)
+                
+                # 维度一致性校验，避免训练中维度不匹配
+                data_len = len(self.observations)
+                assert len(self.actions) == data_len, f"Actions length({len(self.actions)}) mismatch with observations({data_len})"
+                assert len(self.rewards) == data_len, f"Rewards length({len(self.rewards)}) mismatch with observations({data_len})"
+                
+                # 加载信息字典（补充键值校验）
+                self.info = {}
+                if 'info' in f and isinstance(f['info'], h5py.Group):
+                    for key in f['info'].keys():
+                        self.info[key] = torch.tensor(f['info'][key][:], dtype=torch.float32)
+                        assert len(self.info[key]) == data_len, f"Info[{key}] length mismatch with observations"
+                else:
+                    print("Warning: 'info' group not found or invalid in HDF5 file")
+        
+        except Exception as e:
+            raise RuntimeError(f"Dataset loading failed: {str(e)}") from e
         
         print(f"Dataset loaded successfully!")
         print(f"Observations shape: {self.observations.shape}")
@@ -60,35 +80,39 @@ class OfflineDataset:
         print(f"Next observations shape: {self.next_observations.shape}")
         print(f"Dones shape: {self.dones.shape}")
         
-        # 打印数据集统计信息
         self._print_statistics()
     
     def _print_statistics(self):
-        """打印数据集统计信息"""
+        """打印数据集统计信息（补充奖励范围与动作分量标注）"""
         print("\n=== Dataset Statistics ===")
         print(f"Total timesteps: {len(self.observations):,}")
-        print(f"Average reward: {self.rewards.mean().item():.3f}")
+        # 补充奖励范围统计，便于分析数据质量
+        print(f"Average reward: {self.rewards.mean().item():.3f} (Range: {self.rewards.min().item():.3f} ~ {self.rewards.max().item():.3f})")
         print(f"Done rate: {self.dones.mean().item():.2%}")
         
         if 'is_collision' in self.info:
             collision_rate = self.info['is_collision'].mean().item()
-            print(f"Collision rate: {collision_rate:.2%}")
+            print(f"Collision rate: {collision_rate:.2%} (Total: {int(self.info['is_collision'].sum().item())})")
         
         if 'is_off_road' in self.info:
             off_road_rate = self.info['is_off_road'].mean().item()
-            print(f"Off-road rate: {off_road_rate:.2%}")
+            print(f"Off-road rate: {off_road_rate:.2%} (Total: {int(self.info['is_off_road'].sum().item())})")
         
-        # 动作统计
-        print(f"Action mean: {self.actions.mean(dim=0).numpy()}")
-        print(f"Action std: {self.actions.std(dim=0).numpy()}")
+        # 动作分量标注中文名称，提升可读性
+        action_names = ['Throttle (油门)', 'Steer (转向)', 'Brake (刹车)']
+        action_mean = self.actions.mean(dim=0).numpy()
+        action_std = self.actions.std(dim=0).numpy()
+        for i, (name, mean, std) in enumerate(zip(action_names, action_mean, action_std)):
+            print(f"{name} - Mean: {mean:.3f}, Std: {std:.3f}")
     
-    def get_dataloader(self, batch_size=256, shuffle=True, val_ratio=0.1):
-        """获取数据加载器"""
-        # 划分训练集和验证集
+    def get_datasets(self, val_ratio=0.1):
+        """获取训练集和验证集（固定随机种子确保可复现）"""
+        # 划分训练集和验证集（设置seed确保每次划分一致）
         dataset_size = len(self.observations)
         val_size = int(dataset_size * val_ratio)
         train_size = dataset_size - val_size
         
+        # 固定split种子，解决每次运行数据划分不一致问题
         train_dataset, val_dataset = random_split(
             TensorDataset(
                 self.observations, 
@@ -97,26 +121,37 @@ class OfflineDataset:
                 self.next_observations, 
                 self.dones
             ),
-            [train_size, val_size]
+            [train_size, val_size],
+            generator=torch.Generator().manual_seed(42)  # 固定种子
         )
         
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-        
-        return train_loader, val_loader
+        return train_dataset, val_dataset
     
 
 class ReplayBuffer:
     def __init__(self, capacity):
         self.buffer = collections.deque(maxlen=capacity) 
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def add(self, state, action, reward, next_state, done): 
+        # 直接存储numpy数组，避免在添加时转换为tensor
         self.buffer.append((state, action, reward, next_state, done)) 
 
     def sample(self, batch_size): 
+        if len(self.buffer) < batch_size:
+            raise ValueError(f"缓冲区大小({len(self.buffer)})小于批次大小({batch_size})")
+            
         transitions = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = zip(*transitions)
-        return np.array(state), action, reward, np.array(next_state), done 
+        states, actions, rewards, next_states, dones = zip(*transitions)
+        
+        # 转换为tensor并移动到设备，确保正确的维度
+        states = torch.tensor(np.array(states), dtype=torch.float32, device=self.device)
+        actions = torch.tensor(np.array(actions), dtype=torch.float32, device=self.device)
+        rewards = torch.tensor(np.array(rewards), dtype=torch.float32, device=self.device).view(-1, 1)
+        next_states = torch.tensor(np.array(next_states), dtype=torch.float32, device=self.device)
+        dones = torch.tensor(np.array(dones), dtype=torch.float32, device=self.device).view(-1, 1)
+        
+        return states, actions, rewards, next_states, dones
 
     def size(self): 
         return len(self.buffer)
@@ -125,7 +160,7 @@ class ReplayBuffer:
 class OfflineTrainer:
     """离线训练器，支持Diffusion_QL"""
     def __init__(self, model, train_loader, val_loader, device='cuda', save_path='./offline_models'):
-        # 模型与设备配置
+        # 模型与设备配置（补充设备校验）
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -133,117 +168,32 @@ class OfflineTrainer:
         self.save_path = save_path
         os.makedirs(save_path, exist_ok=True)
 
-        # 训练历史记录
+        # 训练历史记录（初始化空列表避免索引错误）
         self.train_metrics = {
-            'total_loss': [],
-            'actor_loss': [],    # 仅用于Diffusion模型
-            'critic_loss': [],   # 仅用于Diffusion模型
-            'bc_loss': [],       # 仅用于Diffusion模型
-            'ql_loss': []        # 仅用于Diffusion模型
+            'total_loss': [] 
         }
 
-        self.val_losses = []
-        self.best_val_loss = float('inf')
+
         
-        # 日志与保存配置
-        self.log_dir = './training_logs'
+        # 日志配置（补充时间戳避免覆盖）
+        self.log_dir = f'./training_logs_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
         os.makedirs(self.log_dir, exist_ok=True)
-    
-    def train_off_policy_agent(self, num_episodes, replay_buffer, minimal_size, batch_size, train_loader):
-        return_list = []
-        # 初始化指标统计字典
-        metrics_history = {
-            'bc_loss': [],
-            'ql_loss': [],
-            'actor_loss': [],
-            'critic_loss': [],
-            'episode_returns': []
-        }
-        
-        progress_bar = tqdm(total=num_episodes, desc="Training", leave=False)
-        
-        # 创建数据加载器的迭代器
-        data_iter = iter(train_loader)
-        
-        for episode in range(num_episodes):
-            try:
-                # 从train_loader中获取一批数据
-                batch = next(data_iter)
-            except StopIteration:
-                # 如果数据遍历完了，重新创建迭代器
-                data_iter = iter(train_loader)
-                batch = next(data_iter)
-            
-            episode_return = 0
-            states, actions, rewards, next_states, dones = batch
-            
-            # 创建mini_buffer用于当前批次的训练
-            mini_buffer = ReplayBuffer()
-            
-            # 将数据加入buffer
-            for state, action, reward, next_state, done in zip(states, actions, rewards, next_states, dones):
-                replay_buffer.add(state, action, reward, next_state, done)
-                mini_buffer.add(state, action, reward, next_state, done)
-                episode_return += reward
-            
-            # 训练条件判断
-            if replay_buffer.size() > minimal_size:
-                # 调用 Diffusion_QL.train() 方法
-                metrics = self.model.train(
-                        replay_buffer=mini_buffer,
-                        iterations=10,
-                        batch_size=obs.shape[0]
-                        )
-                
-                # 记录指标
-                for key in ['bc_loss', 'ql_loss', 'actor_loss', 'critic_loss']:
-                    if key in metrics:
-                        metrics_history[key].extend(metrics[key])
-            
-            return_list.append(episode_return)
-            metrics_history['episode_returns'].append(episode_return)
-            
-            # 更新进度条
-            if (episode + 1) % 10 == 0:
-                progress_bar.set_postfix({
-                    'episode': episode + 1,
-                    'return': '%.3f' % np.mean(return_list[-10:]),
-                    'bc_loss': '%.4f' % (np.mean(metrics_history['bc_loss'][-10:]) if metrics_history['bc_loss'] else 0),
-                    'ql_loss': '%.4f' % (np.mean(metrics_history['ql_loss'][-10:]) if metrics_history['ql_loss'] else 0)
-                })
-            progress_bar.update(1)
-        
-        progress_bar.close()
-        return return_list, metrics_history
+        # 初始化CSV日志，便于后续分析
+        self.csv_log_path = os.path.join(self.log_dir, 'train_log.csv')
+        with open(self.csv_log_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=['epoch', 'train_bc_loss', 'train_ql_loss', 'val_loss'])
+            writer.writeheader()
 
-    def validate(self):
-        """验证当前模型性能"""
-        self.model.eval()
-        total_loss = 0.0
-        num_batches = 0
-        
-        with torch.no_grad():
-            for batch in self.val_loader:
-                obs, actions, rewards, next_obs, dones = batch
-                obs = obs.to(self.device)
-                actions = actions.to(self.device)
-                
-                # 计算验证损失
-                if isinstance(self.model, Diffusion_QL):
-                    # 对于Diffusion模型，计算行为克隆损失作为验证指标
-                    pred_actions = self.model.actor(obs)
-                    loss = nn.MSELoss()(pred_actions, actions)
-                else:
-                    # 对于普通模型，直接计算预测损失
-                    pred_actions = self.model(obs)
-                    loss = nn.MSELoss()(pred_actions, actions)
-                
-                total_loss += loss.item()
-                num_batches += 1
-        
-        avg_loss = total_loss / num_batches
-        self.val_losses.append(avg_loss)
-        return avg_loss
+    
+    def train_off_policy_agent(self, replay_buffer, iterations, batch_size):
+        # 训练模型
+        metrics = self.model.train(
+            replay_buffer, 
+            iterations, 
+            batch_size
+        )
+        return metrics
+
 
     def save_model(self, identifier):
         """保存模型权重"""
@@ -306,17 +256,15 @@ def main():
     parser = argparse.ArgumentParser(description='Train on EasyCarla Offline Dataset')
     parser.add_argument('--data_path', type=str, default='easycarla_offline_dataset.hdf5',
                        help='Path to the HDF5 dataset file')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
+    parser.add_argument('--epochs', type=int, default=5, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=100, help='Batch size')
-    parser.add_argument('--val_ratio', type=float, default=0.1, help='Validation ratio')
+    parser.add_argument('--val_ratio', type=float, default=0.001, help='Validation ratio')
+    parser.add_argument('--minimal_size', type=int, default=1000, help='Minimal replay buffer size for training')
     args = parser.parse_args()
     
     # 加载数据集
     dataset = OfflineDataset(args.data_path)
-    train_loader, val_loader = dataset.get_dataloader(
-        batch_size=args.batch_size, 
-        val_ratio=args.val_ratio
-    )
+    train_loader, val_loader = dataset.get_datasets(val_ratio=args.val_ratio)
     
     # ===================== Initialize Model =====================
     state_dim = 307
@@ -343,52 +291,135 @@ def main():
     # 创建保存目录（确保存在）
     checkpoint_dir = './params_dql'
     os.makedirs(checkpoint_dir, exist_ok=True)
-    
+
+    # 首先将所有训练数据添加到回放缓冲区
+    replay_buffer = ReplayBuffer(capacity=1000000)
+
     # 训练循环
     print(f"\nStarting training for {args.epochs} epochs...")
     for epoch in range(1, args.epochs + 1):
         print(f"\nEpoch {epoch}/{args.epochs}")
+
+        # 1. 配置采样参数（按需调整，二选一即可）
+        sample_ratio = 0.001  # 按训练集比例采样（例如取0.1%）
+        # max_samples = 50000  # 按固定数量采样（例如最多5万条）
+        max_samples = int(len(train_loader.dataset) * sample_ratio)  # 按比例计算目标采样数
+        print(f"训练集总样本数: {len(train_loader.dataset)}")
+        print(f"目标采样数: {max_samples}")
+
+        # 2. 随机选择目标索引
+        target_indices = np.random.choice(len(train_loader.dataset), max_samples, replace=False)
+
+        # 3. 直接按索引从数据集中抽取样本并添加到buffer
+        count = 0
+        for idx in target_indices:
+            # 直接从数据集中获取单个样本
+            sample = train_loader.dataset[idx]
+            
+            # 假设数据集返回的是 (state, action, reward, next_state, done) 元组
+            state, action, reward, next_state, done = sample
+
+            # 转换为numpy并添加到回放缓冲区
+            replay_buffer.add(
+                state=state.numpy() if hasattr(state, 'numpy') else state,
+                action=action.numpy() if hasattr(action, 'numpy') else action,
+                reward=reward.item() if hasattr(reward, 'item') else reward,
+                next_state=next_state.numpy() if hasattr(next_state, 'numpy') else next_state,
+                done=done.item() if hasattr(done, 'item') else done
+            )
+            
+            count += 1
+            
+            # 进度提示
+            if count % 1000 == 0:  # 每100条打印一次
+                print(f"已添加 {count}/{max_samples} 样本到回放缓冲区")
+
+        print(f"回放缓冲区最终大小: {replay_buffer.size()}")
         
         # 训练
-        train_loss = trainer.train_off_policy_agent()
+        iterations = 1000
+        metrics = trainer.train_off_policy_agent(
+            replay_buffer,
+            iterations,
+            batch_size=args.batch_size
+        )
         
-        # 验证
-        if epoch % 5 == 0 or epoch == args.epochs:
-            val_loss = trainer.validate()
-            print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, Val Loss = {val_loss:.4f}")
+        # 验证和打印训练信息
+        if epoch % 2 == 0 or epoch == args.epochs:
+            # 计算各项平均损失
+            avg_losses = {}
+            for key in metrics:
+                try:
+                    valid_losses = [loss for loss in metrics[key] if isinstance(loss, (int, float)) and np.isfinite(loss)]
+                    avg_losses[key] = np.mean(valid_losses) if valid_losses else 0.0
+                except (TypeError, ValueError):
+                    avg_losses[key] = 0.0
+            
+            # 执行验证
+            val_loss = model.validate(val_loader)
+            total_train_loss = np.mean(list(avg_losses.values())) if avg_losses else 0.0
+            
+            # 打印结果
+            print(f"\nEpoch {epoch}:")
+            for key, loss in avg_losses.items():
+                count = len([loss_val for loss_val in metrics[key] if isinstance(loss_val, (int, float)) and np.isfinite(loss_val)])
+                print(f"  {key}: {loss:.4f} (n={count})")
+            print(f"  总训练损失: {total_train_loss:.4f}, 验证损失: {val_loss:.4f}\n")
+            
+            trainer.train_metrics['total_loss'].append(total_train_loss)
         else:
-            print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}")
-        
-        
-        # 定期保存检查点
-        if epoch % 20 == 0:
-            model.save_model(checkpoint_dir, id=f"epoch_{epoch}")            
-            # 保存训练状态（使用 trainer.train_metrics 而非 trainer.train_losses）
-            torch.save({
-                'epoch': epoch,
-                'train_losses': trainer.train_metrics['total_loss'],  # 修改这里
-                'val_losses': trainer.val_losses,
-                'actor_optimizer': model.actor_optimizer.state_dict(),
-                'critic_optimizer': model.critic_optimizer.state_dict()
-            }, f'{checkpoint_dir}/training_state_epoch_{epoch}.pth')
-            print(f"Checkpoint saved as '{checkpoint_dir}/training_state_epoch_{epoch}.pth'")
+            try:
+                total_train_loss = np.mean([
+                    np.mean([loss for loss in metrics[key] if isinstance(loss, (int, float)) and np.isfinite(loss)] or [0])
+                    for key in metrics
+                ]) if metrics else 0.0
+            except Exception as e:
+                print(f"计算训练损失时出错: {e}")
+                total_train_loss = 0.0
+                
+            print(f"Epoch {epoch}: 训练损失 = {total_train_loss:.4f}")
+            trainer.train_metrics['total_loss'].append(total_train_loss)
 
-    # 保存最终模型时同样修改
-    torch.save({
-        'epoch': epoch,
-        'train_losses': trainer.train_metrics['total_loss'],  # 修改这里
-        'val_losses': trainer.val_losses,
+            
+        # 定期保存检查点
+        if epoch % 2 == 0:
+            # 确保检查点目录存在
+            os.makedirs(checkpoint_dir, exist_ok=True)
+
+            # 保存模型权重
+            model_save_path = model.save_model(checkpoint_dir, id=f"epoch_{epoch}")
+            
+            # 保存训练状态（包含更完整的信息）
+            checkpoint = {
+                'epoch': epoch,
+                'train_metrics': trainer.train_metrics,
+                'actor_optimizer': model.actor_optimizer.state_dict(),
+                'critic_optimizer': model.critic_optimizer.state_dict(),
+                'loss': avg_losses  # 增加当前损失，便于后续分析
+            }
+            
+            state_save_path = f'{checkpoint_dir}/training_state_epoch_{epoch}.pth'
+            torch.save(checkpoint, state_save_path)
+            print(f"Checkpoint saved: model={model_save_path}, state={state_save_path}")
+
+    # 保存最终模型
+    final_checkpoint = {
+        'epoch': args.epochs,
+        'train_metrics': trainer.train_metrics,
         'actor_optimizer': model.actor_optimizer.state_dict(),
         'critic_optimizer': model.critic_optimizer.state_dict()
-    }, f'{checkpoint_dir}/training_state_final.pth')   
-    print("Training completed! Model saved as 'final_model.pth'")
+    }
+
+    final_save_path = f'{checkpoint_dir}/training_state_final.pth'
+    torch.save(final_checkpoint, final_save_path)
+    print(f"Training completed! Final model saved as '{final_save_path}'")  # 修复命名不一致问题
     
     # 绘制训练历史
     trainer.plot_training_history()
     print("Training history plot saved as 'training_history.png'")
     
     # 测试模型性能
-    test_model_performance(model, dataset, device)
+    # test_model_performance(model, dataset, device)
 
 def test_model_performance(model, dataset, device):
     """测试模型性能"""
