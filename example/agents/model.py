@@ -30,6 +30,10 @@ class MLP(nn.Module):
         )
 
         input_dim = state_dim + action_dim + t_dim
+        # print('input_dim: ', input_dim)
+        # print('t_dim: ', t_dim)
+        # print('action_dim: ', action_dim)
+        # print('state_dim: ', state_dim)
         self.mid_layer = nn.Sequential(nn.Linear(input_dim, 256),
                                        nn.Mish(),
                                        nn.Linear(256, 256),
@@ -42,7 +46,9 @@ class MLP(nn.Module):
     def forward(self, x, time, state):
 
         t = self.time_mlp(time)
+        # print('x.shape, t.shape, state.shape: ', x.shape, t.shape, state.shape)
         x = torch.cat([x, t, state], dim=1)
+        # print('x.shape: ', x.shape)
         x = self.mid_layer(x)
 
         return self.final_layer(x)

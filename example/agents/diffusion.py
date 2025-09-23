@@ -137,6 +137,17 @@ class Diffusion(nn.Module):
         else:
             return x
 
+    # for t from T down to 1:
+    #   ε_θ = model(x_t, t, state)          # 预测噪声
+    #   x_0 = (x_t - √(1-ᾱ_t)·ε_θ) / √ᾱ_t   # 重建起始值
+    #   μ̃ = f(x_0, x_t, t)                  # 计算后验均值
+    #   x_{t-1} = μ̃ + σ̃_t · z               # 采样下一步
+    
+    # 条件生成: 状态 state 作为条件信息指导动作生成
+    # 逐步细化: 从噪声逐步生成精细的动作
+    # 数值稳定: 使用预计算的数学常数确保稳定性
+    # 灵活性: 支持预测噪声或直接预测x_0两种模式
+    
     # @torch.no_grad()
     def sample(self, state, *args, **kwargs):
         batch_size = state.shape[0]

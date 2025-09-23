@@ -12,7 +12,7 @@ from utils.logger import logger
 from agents.diffusion import Diffusion
 from agents.model import MLP
 from agents.helpers import EMA
-
+from tqdm import tqdm
 
 class Critic(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim=256):
@@ -83,7 +83,13 @@ class Diffusion_QL(object):
         self.update_ema_every = update_ema_every
 
         self.critic = Critic(state_dim, action_dim).to(device)
+        # # 默认情况下，主网络启用梯度计算
+        # for param in self.critic.parameters():
+        #     print(param.requires_grad)  # 输出: True
         self.critic_target = copy.deepcopy(self.critic)
+        # # 目标网络通常禁用梯度计算
+        # for param in self.critic_target.parameters():
+        #     print(param.requires_grad)  # 输出: False
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
 
         if lr_decay:
@@ -99,17 +105,154 @@ class Diffusion_QL(object):
         self.device = device
         self.max_q_backup = max_q_backup
 
+        self.val_losses = []
+
     def step_ema(self):
         if self.step < self.step_start_ema:
             return
         self.ema.update_model_average(self.ema_model, self.actor)
 
+    def validate(self, val_loader):
+        """验证当前模型性能（简化版，主要关注BC损失）"""
+        self.actor.eval()
+        
+        total_loss = 0.0
+        num_batches = 0
+        
+        # 1. 用tqdm包裹val_loader，创建验证进度条
+        val_progress = tqdm(val_loader, desc="Validating (BC Loss)", leave=False, ncols=100)
+        
+        with torch.no_grad():  # 禁用梯度计算，节省内存并提速
+            for batch in val_progress:
+                # 安全解包批次数据，避免格式异常
+                try:
+                    state, action, reward, next_state, not_done = batch
+                except ValueError as e:
+                    print(f"警告：批次数据格式错误 - {str(e)}，跳过该批次")
+                    continue
+                
+                try:
+                    state = state.to(self.device, non_blocking=True).unsqueeze(0)
+                    action = action.to(self.device, non_blocking=True).unsqueeze(0)
+                    reward = reward.to(self.device, dtype=torch.float32, non_blocking=True).unsqueeze(0)
+                    next_state = next_state.to(self.device, non_blocking=True).unsqueeze(0)
+                    not_done = not_done.to(self.device, dtype=torch.float32, non_blocking=True).unsqueeze(0)
+                except Exception as e:
+                    print(f"警告：批次数据预处理失败 - {str(e)}，跳过该批次")
+                    continue
+                
+                # 计算行为克隆损失，校验维度匹配
+                try:
+                    pred_actions = self.actor(state)
+                    # 确保预测动作与真实动作维度一致
+                    if pred_actions.shape != action.shape:
+                        raise ValueError(f"动作维度不匹配：预测={pred_actions.shape}，真实={action.shape}")
+                    loss = nn.MSELoss()(pred_actions, action)
+                except Exception as e:
+                    print(f"警告：损失计算失败 - {str(e)}，跳过该批次")
+                    continue
+                
+                # 累加损失和批次计数
+                total_loss += loss.item()
+                num_batches += 1
+                
+                # 实时更新进度条信息
+                current_avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
+                val_progress.set_postfix({
+                    "Batch Loss": f"{loss.item():.4f}",
+                    "Avg Loss": f"{current_avg_loss:.4f}"
+                })
+        
+        val_progress.close()  # 显式关闭进度条
+        self.actor.train()    # 切回训练模式
+        
+        avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
+        print(f"\nValidation Finished | Avg BC Loss: {avg_loss:.4f} | Total Batches: {num_batches}")
+        return avg_loss
+    
+    def evaluate(self, test_loader):
+        """测试模型性能，计算多种损失指标"""
+        self.actor.eval()
+        
+        all_obs = []
+        all_actions = []
+        all_pred_actions = []
+        
+        # 添加进度条和错误处理，类似于validate方法
+        test_progress = tqdm(test_loader, desc="Evaluating", leave=False, ncols=100)
+        
+        with torch.no_grad():
+            for batch in test_progress:
+                # 安全解包批次数据，避免格式异常
+                try:
+                    # 从批次中提取观测和动作（适配DataLoader的数据结构）
+                    observations, actions, _, _, _ = batch
+                except ValueError as e:
+                    print(f"警告：批次数据格式错误 - {str(e)}，跳过该批次")
+                    continue
+                
+                try:
+                    observations = observations.to(self.device, non_blocking=True).unsqueeze(0)
+                    actions = actions.to(self.device, non_blocking=True).unsqueeze(0)
+                except Exception as e:
+                    print(f"警告：批次数据预处理失败 - {str(e)}，跳过该批次")
+                    continue
+                
+                # 根据模型类型预测动作
+                try:
+                    pred_actions = self.actor(observations)
+                except Exception as e:
+                    print(f"警告：动作预测失败 - {str(e)}，跳过该批次")
+                    continue
+                
+                # 保存结果用于后续计算
+                all_obs.append(observations.cpu())
+                all_actions.append(actions.cpu())
+                all_pred_actions.append(pred_actions.cpu())
+        
+        test_progress.close()  # 显式关闭进度条
+        
+        # 合并所有批次结果
+        all_obs = torch.cat(all_obs, dim=0)
+        all_actions = torch.cat(all_actions, dim=0)
+        all_pred_actions = torch.cat(all_pred_actions, dim=0)
+        
+        # 计算多种损失指标（与训练时的损失相对应）
+        mse_loss = nn.MSELoss()(all_pred_actions, all_actions).item()
+        mae_loss = nn.L1Loss()(all_pred_actions, all_actions).item()
+        
+        print(f"\n=== Test Performance ===")
+        print(f"MSE Loss: {mse_loss:.6f}")
+        print(f"MAE Loss: {mae_loss:.6f}")
+        
+        # 动作分量误差分析
+        action_errors = (all_pred_actions - all_actions).abs().mean(dim=0).numpy()
+        action_names = ['Throttle', 'Steer', 'Brake']
+        for i, name in enumerate(action_names[:len(action_errors)]):
+            print(f"{name} Error: {action_errors[i]:.4f}")
+        
+        self.actor.train()  # 切回训练模式
+        
+        # 返回计算的损失值，可用于后续绘图或记录
+        return {
+            'mse_loss': mse_loss,
+            'mae_loss': mae_loss,
+            'action_errors': action_errors
+        }
+
     def train(self, replay_buffer, iterations, batch_size=100, log_writer=None):
 
         metric = {'bc_loss': [], 'ql_loss': [], 'actor_loss': [], 'critic_loss': []}
-        for _ in range(iterations):
+        for i in tqdm(range(iterations), desc="训练进度"):
             # Sample replay buffer / batch
-            state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
+            state, action, reward, next_state, not_done = replay_buffer.sample(batch_size)
+
+            # print(f"采样数据维度:")
+            # print(f"  state: {state.shape} (批次大小: {state.shape[0]}, 状态特征数: {state.shape[1] if len(state.shape)>=2 else 1})")
+            # print(f"  action: {action.shape} (批次大小: {action.shape[0]}, 动作维度: {action.shape[1] if len(action.shape)>=2 else 1})")
+            # print(f"  next_state: {next_state.shape} (批次大小: {next_state.shape[0]}, 状态特征数: {next_state.shape[1] if len(next_state.shape)>=2 else 1})")
+            # print(f"  reward: {reward.shape} (批次大小: {reward.shape[0]}, 维度: {len(reward.shape)})")
+            # print(f"  not_done: {not_done.shape} (批次大小: {not_done.shape[0]}, 维度: {len(not_done.shape)})")
 
             """ Q Training """
             current_q1, current_q2 = self.critic(state, action)
@@ -132,6 +275,7 @@ class Diffusion_QL(object):
 
             self.critic_optimizer.zero_grad()
             critic_loss.backward()
+            '这段代码实现了梯度裁剪,用于防止训练过程中的梯度爆炸问题'
             if self.grad_norm > 0:
                 critic_grad_norms = nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=self.grad_norm, norm_type=2)
             self.critic_optimizer.step()
