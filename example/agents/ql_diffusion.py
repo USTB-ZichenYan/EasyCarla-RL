@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from utils.logger import logger
 
 from agents.diffusion import Diffusion
@@ -71,7 +72,7 @@ class Diffusion_QL(object):
 
         self.actor = Diffusion(state_dim=state_dim, action_dim=action_dim, model=self.model, max_action=max_action,
                                beta_schedule=beta_schedule, n_timesteps=n_timesteps,).to(device)
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=1e-6)
 
         self.lr_decay = lr_decay
         self.grad_norm = grad_norm
@@ -90,11 +91,29 @@ class Diffusion_QL(object):
         # # 目标网络通常禁用梯度计算
         # for param in self.critic_target.parameters():
         #     print(param.requires_grad)  # 输出: False
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=1e-5)
 
         if lr_decay:
-            self.actor_lr_scheduler = CosineAnnealingLR(self.actor_optimizer, T_max=lr_maxt, eta_min=0.)
-            self.critic_lr_scheduler = CosineAnnealingLR(self.critic_optimizer, T_max=lr_maxt, eta_min=0.)
+            # self.actor_lr_scheduler = CosineAnnealingLR(self.actor_optimizer, T_max=lr_maxt, eta_min=0.)
+            # self.critic_lr_scheduler = CosineAnnealingLR(self.critic_optimizer, T_max=lr_maxt, eta_min=0.)
+
+            # self.actor_lr_scheduler = CosineAnnealingLR(
+            #     self.actor_optimizer, 
+            #     T_max=500,    # 小周期测试
+            #     eta_min=5e-7
+            # )
+            # self.critic_lr_scheduler = CosineAnnealingLR(
+            #     self.critic_optimizer, 
+            #     T_max=500,    # 小周期测试  
+            #     eta_min=5e-6
+            # )
+
+            self.actor_lr_scheduler = CosineAnnealingWarmRestarts(
+                self.actor_optimizer, T_0=500, T_mult=2, eta_min=1e-7
+            )
+            self.critic_lr_scheduler = CosineAnnealingWarmRestarts(
+                self.critic_optimizer, T_0=500, T_mult=2, eta_min=1e-6
+            )
 
         self.state_dim = state_dim
         self.max_action = max_action
@@ -307,7 +326,15 @@ class Diffusion_QL(object):
 
             self.step += 1
 
-            """ Log """
+            """ Log """            
+            # 在训练循环中定期打印学习率
+            if self.step % 5000 == 0:
+                print("Actor optimizer param groups:", len(self.actor_optimizer.param_groups))
+                print("Critic optimizer param groups:", len(self.critic_optimizer.param_groups))
+                current_actor_lr = self.actor_optimizer.param_groups[0]['lr']
+                current_critic_lr = self.critic_optimizer.param_groups[0]['lr']
+                print(f"Step {self.step}: Actor LR = {current_actor_lr:.2e}, Critic LR = {current_critic_lr:.2e}")
+
             if log_writer is not None:
                 if self.grad_norm > 0:
                     log_writer.add_scalar('Actor Grad Norm', actor_grad_norms.max().item(), self.step)

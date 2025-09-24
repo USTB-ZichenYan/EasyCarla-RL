@@ -201,11 +201,9 @@ class ReplayBuffer:
 # ===================== Trainer Class =====================
 class OfflineTrainer:
     """离线训练器，支持Diffusion_QL"""
-    def __init__(self, model, train_loader, val_loader, device='cuda', save_path='./offline_models'):
+    def __init__(self, model, device='cuda', save_path='./offline_models'):
         # 模型与设备配置（补充设备校验）
         self.model = model
-        self.train_loader = train_loader
-        self.val_loader = val_loader
         self.device = device
         self.save_path = save_path
         os.makedirs(save_path, exist_ok=True)
@@ -229,82 +227,133 @@ class OfflineTrainer:
         )
         return metrics
 
-    def save_model(self, identifier):
-        """保存模型权重"""
-        if isinstance(self.model, Diffusion_QL):
-            # Diffusion_QL模型保存（使用其内置方法）
-            self.model.save_model(self.save_path, id=identifier)
-        else:
-            # 普通模型保存
-            torch.save({
-                'model_state_dict': self.model.state_dict(),
-                'optimizer_state_dict': self.optimizer.state_dict() if self.optimizer else None,
-                'best_val_loss': self.best_val_loss
-            }, f"{self.save_path}/model_{identifier}.pth")
-        
-        print(f"模型已保存至 {self.save_path}/model_{identifier}.pth")
-
-    def plot_training_history(self, save_fig=True):
-        """绘制训练历史曲线，val_loss与bc_loss同图，且val_loss单独成图，其他损失不包含val_loss"""
+    def plot_training_history(self, save_fig=True, save_csv=True):
+        """
+        绘制训练历史曲线（val_loss与bc_loss同图，val_loss单独成图），并可选保存损失值到CSV
+        :param save_fig: 是否保存绘图结果
+        :param save_csv: 是否保存损失值到CSV文件
+        """
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         import os
+        import numpy as np
+        import pandas as pd  # 新增：用于处理CSV
         
         plt.style.use('seaborn-v0_8')
         
-        # 获取所有损失类型并调整顺序，确保bc_loss和val_loss在前
+        def smooth_curve(data, alpha=0.6):
+            """使用指数移动平均平滑曲线，alpha=0.6表示60%平滑"""
+            if len(data) == 0:
+                return data
+            smoothed = [data[0]]
+            for i in range(1, len(data)):
+                smoothed.append(alpha * smoothed[i-1] + (1 - alpha) * data[i])
+            return smoothed
+        
+        # -------------------------- 新增：保存损失值到CSV --------------------------
+        if save_csv:
+            # 1. 构造损失数据字典（确保所有损失的长度一致，以最短的为准，避免索引错位）
+            loss_data = {}
+            min_length = min(len(self.train_metrics[loss]) for loss in self.train_metrics.keys())
+            
+            # 2. 为每个损失类型添加数据（截取到最短长度，保证行数统一）
+            for loss_name in self.train_metrics.keys():
+                loss_values = self.train_metrics[loss_name][:min_length]  # 统一长度
+                loss_data[loss_name] = loss_values
+            
+            # 3. 添加Epoch列（从1开始，对应训练轮次）
+            loss_data['Epoch'] = list(range(1, min_length + 1))
+            
+            # 4. 转换为DataFrame并调整列顺序（Epoch列放在第一列）
+            loss_df = pd.DataFrame(loss_data)
+            loss_df = loss_df[['Epoch'] + [col for col in loss_df.columns if col != 'Epoch']]
+            
+            # 5. 确保日志目录存在，保存CSV
+            os.makedirs(self.log_dir, exist_ok=True)
+            csv_path = f"{self.log_dir}/training_losses.csv"
+            loss_df.to_csv(csv_path, index=False, encoding='utf-8')
+            print(f"训练损失数据已保存至 {csv_path}")
+        
+        # -------------------------- 原有：绘制训练历史曲线 --------------------------
+        # 获取所有损失类型并调整顺序（bc_loss、val_loss在前，便于对比）
         loss_types = list(self.train_metrics.keys())
-        # 确保bc_loss在前面
         if 'bc_loss' in loss_types:
             loss_types.insert(0, loss_types.pop(loss_types.index('bc_loss')))
-        # 确保val_loss紧随bc_loss之后
         if 'val_loss' in loss_types:
-            loss_types.insert(1, loss_types.pop(loss_types.index('val_loss')))
+            # 确保val_loss在bc_loss之后（若已在前面则跳过）
+            if loss_types.index('val_loss') != 1:
+                loss_types.insert(1, loss_types.pop(loss_types.index('val_loss')))
         
         num_losses = len(loss_types)
         
-        # 创建适当大小的画布和子图
+        # 创建画布和子图（根据损失数量动态调整大小）
         fig, axes = plt.subplots(num_losses, 1, figsize=(12, 4 * num_losses), sharex=True)
-        
-        # 确保axes是数组形式，即使只有一个子图
         if num_losses == 1:
-            axes = [axes]
+            axes = [axes]  # 确保axes是数组，避免单图时索引错误
         
-        # 为每种损失绘制曲线
+        # 为每种损失绘制平滑曲线
         for i, loss_name in enumerate(loss_types):
             ax = axes[i]
             loss_values = self.train_metrics[loss_name]
             
-            # 绘制当前损失曲线
-            ax.plot(loss_values, label=f'{loss_name.replace("_", " ").title()}', 
-                    linewidth=2, color='blue' if loss_name == 'bc_loss' else 'green')
+            # 应用平滑处理
+            smoothed_loss = smooth_curve(loss_values, alpha=0.6)
+            epochs = range(1, len(loss_values) + 1)  # Epoch从1开始，更符合直觉
             
-            # 仅在bc_loss图中添加val_loss曲线作为对比
+            # 绘制当前损失曲线（bc_loss用蓝色，其他用绿色，便于区分）
+            color = 'blue' if loss_name == 'bc_loss' else 'green'
+            ax.plot(epochs, smoothed_loss, linewidth=2, color=color,
+                    label=f'{loss_name.replace("_", " ").title()}')
+            
+            # 仅在bc_loss图中添加val_loss对比（红色虚线）
             if loss_name == 'bc_loss' and 'val_loss' in self.train_metrics:
-                ax.plot(self.train_metrics['val_loss'], label='Validation Loss', 
-                        linewidth=2, linestyle='--', color='red')
+                val_loss_values = self.train_metrics['val_loss']
+                # 确保val_loss长度与bc_loss一致（避免绘图错位）
+                if len(val_loss_values) >= len(loss_values):
+                    val_loss_values = val_loss_values[:len(loss_values)]
+                else:
+                    # 若val_loss较短，用NaN填充（避免曲线断裂）
+                    val_loss_values += [np.nan] * (len(loss_values) - len(val_loss_values))
+                
+                smoothed_val_loss = smooth_curve(val_loss_values, alpha=0.6)
+                ax.plot(epochs, smoothed_val_loss, linewidth=2, linestyle='--',
+                        color='red', label='Validation Loss')
             
-            ax.set_title(f'{loss_name.replace("_", " ").title()} History', fontsize=14)
+            # 设置子图标题、标签和网格
+            ax.set_title(f'{loss_name.replace("_", " ").title()} History (60% Smoothed)', fontsize=14)
             ax.set_ylabel('Loss', fontsize=12)
-            ax.legend()
-            ax.grid(alpha=0.3)
+            ax.legend(loc='upper right')  # 图例放在右上角，避免遮挡曲线
+            ax.grid(alpha=0.3, linestyle='-')  # 网格更浅，不干扰曲线
         
-        # 设置x轴标签（只在最后一个子图设置）
+        # 最后一个子图添加x轴标签（Epoch）
         axes[-1].set_xlabel('Epoch', fontsize=12)
+        axes[-1].set_xticks(range(0, len(epochs) + 1, max(1, len(epochs) // 10)))  # 优化x轴刻度密度
         
-        plt.tight_layout()
+        # 调整子图间距，避免标题/标签重叠
+        plt.tight_layout(pad=2.0)
         
+        # 保存或显示图片
         if save_fig:
-            # 确保日志目录存在
             os.makedirs(self.log_dir, exist_ok=True)
-            fig.savefig(f"{self.log_dir}/training_history.png")
-            print(f"训练历史图表已保存至 {self.log_dir}/training_history.png")
+            fig_path = f"{self.log_dir}/training_history.png"
+            fig.savefig(fig_path, dpi=300, bbox_inches='tight')  # dpi=300确保图片清晰度
+            print(f"训练历史图表已保存至 {fig_path}")
         else:
             plt.show()
         
-        plt.close()
-    
+        plt.close(fig)  # 关闭画布，释放内存
+
+def compute_advantage(gamma, lmbda, td_delta):
+    td_delta = td_delta.detach().numpy()
+    advantage_list = []
+    advantage = 0.0
+    for delta in td_delta[::-1]:
+        advantage = gamma * lmbda * advantage + delta
+        advantage_list.append(advantage)
+    advantage_list.reverse()
+    return torch.tensor(advantage_list, dtype=torch.float)
+
 
 # ===================== Main Function =====================
 def main():
@@ -312,7 +361,7 @@ def main():
     parser.add_argument('--data_path', type=str, default='easycarla_offline_dataset.hdf5',
                        help='Path to the HDF5 dataset file')
     parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
-    parser.add_argument('--buffer_capacity', type=int, default=30000, help='Replay buffer capacity')
+    parser.add_argument('--buffer_capacity', type=int, default=15000, help='Replay buffer capacity')
     parser.add_argument('--replay_buffer_sample_ratio', type=float, default=0.01, help='Replay buffer sample ratio')
     
     parser.add_argument('--iterations', type=int, default=1000, help='Iterations')
@@ -320,12 +369,13 @@ def main():
 
     parser.add_argument('--val_ratio', type=float, default=0.005, help='Validation ratio')
     parser.add_argument('--test_ratio', type=float, default=0.005, help='Test ratio')
+
     args = parser.parse_args()
     
     # 加载数据集
     dataset = OfflineDataset(args.data_path)
     train_loader, val_loader, test_loader = dataset.get_datasets(val_ratio=args.val_ratio, test_ratio=args.test_ratio)
-    
+
     # ===================== Initialize Model =====================
     state_dim = 307
     action_dim = 3
@@ -342,11 +392,21 @@ def main():
         tau=0.005,
         eta=0.01,
         beta_schedule='vp',
-        n_timesteps=5
+        n_timesteps=5,
+        lr_decay=True
     )
-    
+
+    # ===================== Load Pretrained Model =====================
+    model_id = 200  # Model checkpoint ID to load
+    save_path = './params_dql'  # Model checkpoint directory
+    model.load_model(save_path, id=model_id)
+    print(f"Successfully loaded model ID {model_id}")
+
+    # 测试模型性能
+    test_loss = model.evaluate(test_loader)
+
     # 创建训练器
-    trainer = OfflineTrainer(model, train_loader, val_loader, device)
+    trainer = OfflineTrainer(model, device)
 
     # 创建保存目录（确保存在）
     checkpoint_dir = './params_dql'
@@ -439,7 +499,7 @@ def main():
                 trainer.train_metrics['val_loss'].append(trainer.train_metrics['val_loss'][-1])
             else:
                 # 当val_loss历史为空时，使用一个默认值（例如0.0）而不是尝试访问空列表
-                trainer.train_metrics['val_loss'].append(0.0)
+                trainer.train_metrics['val_loss'].append(trainer.train_metrics['bc_loss'][-1])
             
         if epoch % 20 == 0:
             os.makedirs(checkpoint_dir, exist_ok=True)

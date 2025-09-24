@@ -12,6 +12,7 @@ import numpy as np
 import torch
 import os
 from agents.ql_diffusion import Diffusion_QL
+import csv
 
 # ===================== Helper Functions =====================
 def convert_obs_dict_to_vector(obs_dict):
@@ -26,13 +27,13 @@ def convert_obs_dict_to_vector(obs_dict):
 
 # ===================== Environment Configuration =====================
 carla_params = {
-    'number_of_vehicles': 100,
-    'number_of_walkers': 0,
+    'number_of_vehicles': 1,
+    'number_of_walkers': 1,
     'dt': 0.1,  # time interval between two frames
     'ego_vehicle_filter': 'vehicle.tesla.model3',  # filter for defining ego vehicle
     'surrounding_vehicle_spawned_randomly': True, # Whether surrounding vehicles are spawned randomly (True) or set manually (False)
     'port': 2000,  # connection port
-    'town': 'Town03',  # which town to simulate
+    'town': 'Town01',  # which town to simulate
     'max_time_episode': 1000,  # maximum timesteps per episode
     'max_waypoints': 12,  # maximum number of waypoints
     'visualize_waypoints': True,  # Whether to visualize waypoints (default: True)
@@ -66,7 +67,12 @@ model = Diffusion_QL(
 )
 
 # ===================== Load Pretrained Model =====================
-model_id = 200  # Model checkpoint ID to load
+# model_id = 200  # Model checkpoint ID to load
+# save_path = './params_dql'  # Model checkpoint directory
+# model.load_model(save_path, id=model_id)
+# print(f"Successfully loaded model ID {model_id}")
+
+model_id = 1000  # Model checkpoint ID to load
 save_path = './params_dql'  # Model checkpoint directory
 model.load_model(save_path, id=model_id)
 print(f"Successfully loaded model ID {model_id}")
